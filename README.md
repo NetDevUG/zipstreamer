@@ -1,8 +1,9 @@
 <h1 align="center"><img alt="Zipstreamer Logo" src="https://user-images.githubusercontent.com/848343/200652990-70e5f59d-c699-42ed-9a4f-a92cdfddda0d.png" width="300"></h1>
 
-[![Build and Test](https://github.com/scosman/zipstreamer/actions/workflows/test.yml/badge.svg)](https://github.com/scosman/zipstreamer/actions/workflows/test.yml)
-[![Format and Vet](https://github.com/scosman/zipstreamer/actions/workflows/format_check.yml/badge.svg)](https://github.com/scosman/zipstreamer/actions/workflows/format_check.yml)
-[![Docker Generation](https://github.com/scosman/zipstreamer/actions/workflows/publish.yml/badge.svg)](https://github.com/scosman/zipstreamer/pkgs/container/packages%2Fzipstreamer)
+[![Build and Test](https://github.com/NetDevUG/zipstreamer/actions/workflows/test.yml/badge.svg)](https://github.com/NetDevUG/zipstreamer/actions/workflows/test.yml)
+[![Format and Vet](https://github.com/NetDevUG/zipstreamer/actions/workflows/format_check.yml/badge.svg)](https://github.com/NetDevUG/zipstreamer/actions/workflows/format_check.yml)
+[![Docker Generation](https://github.com/NetDevUG/zipstreamer/actions/workflows/publish.yml/badge.svg)](https://github.com/NetDevUG/zipstreamer/pkgs/container/zipstreamer)
+[![Release](https://github.com/NetDevUG/zipstreamer/actions/workflows/release.yml/badge.svg)](https://github.com/NetDevUG/zipstreamer/releases)
 [![Go Report Card](https://goreportcard.com/badge/github.com/scosman/zipstreamer)](https://goreportcard.com/report/github.com/scosman/zipstreamer)
 [![Go Reference](https://pkg.go.dev/badge/github.com/scosman/zipstreamer.svg)](https://pkg.go.dev/github.com/scosman/zipstreamer)
 
@@ -30,7 +31,9 @@ Highlights include:
    - [Heroku - One Click Deploy](#deploy-heroku-a)
    - [Google Cloud Run - One Click Deploy, Serverless](#deploy-google-a)
    - [Docker](#deploy-docker-a)
+   - [Binaries](#deploy-binaries-a)
  - [Configuration Options](#customize-a)
+ - [Releases](#releases-a)
 
 <a name="json-descriptor-a"></a>
 ## JSON Zip File Descriptor 
@@ -230,7 +233,7 @@ Cloud Run is ideal serverless environment for ZipStreamer, as it routes many req
 <a name="deploy-docker-a"></a>
 ### Docker 
 
-This repo contains an dockerfile, and an image is published [on Github Packages](https://github.com/scosman/zipstreamer/pkgs/container/packages%2Fzipstreamer).
+This repo contains an dockerfile, and a multi-arch image (linux/amd64, linux/arm64) is published [on Github Packages](https://github.com/NetDevUG/zipstreamer/pkgs/container/zipstreamer).
 
 #### Build Your Own Image
 
@@ -247,12 +250,22 @@ docker run --env PORT=8080 -p 8080:8080 docker-zipstreamer
 Official packages are published on Github packages. To pull latest stable release:
 
 ```
-docker pull ghcr.io/scosman/packages/zipstreamer:stable
+docker pull ghcr.io/netdevug/zipstreamer:stable
 # Start on port 8080
-docker run --env PORT=8080 -p 8080:8080 ghcr.io/scosman/packages/zipstreamer:stable
+docker run --env PORT=8080 -p 8080:8080 ghcr.io/netdevug/zipstreamer:stable
 ```
 
-Note: `stable` pulls the latest github release. Use `ghcr.io/scosman/packages/zipstreamer:latest` for top of tree.
+Available tags:
+
+ - `stable`: the latest release
+ - `1.2.3`, `1.2`, `1`: a specific release, or the latest release of a minor/major version
+ - `latest`: top of tree (default branch)
+ - `sha-<commit>`: a specific commit of the default branch
+
+<a name="deploy-binaries-a"></a>
+### Binaries
+
+Every [release](https://github.com/NetDevUG/zipstreamer/releases) includes prebuilt binaries for Linux, macOS (amd64/arm64) and Windows (amd64), plus a `checksums.txt` file with SHA-256 checksums.
 
 <a name="customize-a"></a>
 ## Configuration Options
@@ -263,6 +276,16 @@ These environment variables can be used to configure the server:
  - `ZS_URL_PREFIX` - If set, the server will verify the `url` property of the files in the JSON zip file descriptors start with this prefix. Useful to preventing others from using your server to serve their files.
  - `ZS_COMPRESSION` - Defaults to no compression. It's not universally known, but zip files can be uncompressed, and used only to combining many files into one file. Set to `DEFLATE` to use zip deflate compression. **WARNING - enabling compression uses CPU, and will reduce throughput of server**. Note: for files with internal compression (JPEGs, MP4s, etc), zip DEFLATE compression will often increase the total zip file size.
   - `ZS_LISTFILE_URL_PREFIX` - See documentation for `GET /download`
+
+<a name="releases-a"></a>
+## Releases
+
+Releases follow [Semantic Versioning](https://semver.org/) and are created by the [`release.yml`](.github/workflows/release.yml) GitHub Action:
+
+ - Every Monday it updates the Go version and all dependencies, runs format check, vet and tests, and commits the changes to the default branch.
+ - If there are any commits since the last release, it creates a new release: a git tag, a GitHub release with generated release notes and binaries, and the Docker image.
+ - The version bump is derived from [Conventional Commit](https://www.conventionalcommits.org/) messages since the last release: `feat: ...` gives a minor release, `type!: ...` or a `BREAKING CHANGE:` footer gives a major release, anything else (including dependency updates) a patch release.
+ - A release can also be started manually under Actions → "Update dependencies and release" → "Run workflow", optionally forcing a `patch`, `minor` or `major` bump.
 
 ## Why
 

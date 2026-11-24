@@ -1,0 +1,148 @@
+name: Update dependencies and release
+
+# Weekly: update Go and all Go module dependencies, run checks, commit the
+# changes to the default branch and publish a new semantic version release
+# (GitHub release with binaries + Docker image) if anything changed since
+# the last release. Can also be started manually to cut a release.
+
+on:
+  schedule:
+    - cron: "23 3 * * 1" # Mondays 03:23 UTC
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump (auto = derived from Conventional Commit messages)"
+        type: choice
+        options: [auto, patch, minor, major]
+        default: auto
+      update-dependencies:
+        description: "Update Go and dependencies before releasing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # Version of the first release when the repository has no release tag yet.
+  # (Last upstream release of scosman/zipstreamer was v1.1.8; this fork adds
+  # Range request support, hence a minor bump.)
+  INITIAL_VERSION: v1.2.0
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0 # tags and history for versioning and release notes
+
+      - name: Set up latest Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+
+      - name: Update Go version and dependencies
+        if: github.event_name == 'schedule' || inputs.update-dependencies
+        run: |
+          # Raise the go directive (and Docker build image) to the latest Go
+          # minor release, never lower it.
+          latest=$(go env GOVERSION | sed -E 's/^go([0-9]+\.[0-9]+).*/\1/')
+          current=$(go mod edit -json | jq -r .Go | sed -E 's/^([0-9]+\.[0-9]+).*/\1/')
+          if [ "$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -1)" != "$current" ]; then
+            echo "Updating Go $current -> $latest"
+            go mod edit -go="$latest"
+            sed -i -E "s/golang:[0-9]+\.[0-9]+/golang:${latest}/" Dockerfile
+          fi
+
+          go get -u ./...
+          go mod tidy
+          go mod vendor
+          git diff --stat
+
+      - name: Format check
+        run: test -z "$(gofmt -l $(find . -type f -name '*.go' -not -path './vendor/*'))"
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Test
+        run: go test -v ./...
+
+      - name: Commit dependency updates
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Dependencies are up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(deps): update Go and dependencies" \
+            -m "$(git diff --cached -U0 go.mod Dockerfile | grep -E '^[+-][^+-]' || true)"
+          git push origin HEAD:${{ github.event.repository.default_branch }}
+
+      - name: Determine next version
+        id: version
+        run: |
+          version=$(.github/scripts/next-version.sh "${{ inputs.bump || 'auto' }}" "$INITIAL_VERSION")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Next version: ${version:-none}"
+
+      - name: Build release binaries
+        if: steps.version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          mkdir dist
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
+            os=${target%/*}
+            arch=${target#*/}
+            ext=""
+            [ "$os" = windows ] && ext=".exe"
+            name="zipstreamer_${VERSION#v}_${os}_${arch}"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=$VERSION" -o "dist/$name/zipstreamer$ext" .
+            cp README.md LICENCE.md "dist/$name/"
+            if [ "$os" = windows ]; then
+              (cd dist && zip -qr "$name.zip" "$name")
+            else
+              tar -czf "dist/$name.tar.gz" -C dist "$name"
+            fi
+          done
+          (cd dist && sha256sum *.tar.gz *.zip > checksums.txt)
+
+      - name: Create GitHub release
+        if: steps.version.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$VERSION" \
+            --target "$(git rev-parse HEAD)" \
+            --title "$VERSION" \
+            --generate-notes \
+            dist/*.tar.gz dist/*.zip dist/checksums.txt
+
+  # Tags created with GITHUB_TOKEN don't trigger other workflows, so the
+  # Docker image is published by calling the workflow directly.
+  docker:
+    needs: release
+    if: needs.release.outputs.version != ''
+    uses: ./.github/workflows/publish.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+    permissions:
+      contents: read
+      packages: write
