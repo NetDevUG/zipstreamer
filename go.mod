@@ -1,6 +1,6 @@
 module github.com/scosman/zipstreamer
 
-go 1.23
+go 1.27
 
 require (
 	github.com/google/uuid v1.6.0
@@ -8,4 +8,4 @@ require (
 	github.com/gorilla/mux v1.8.1
 )
 
-require github.com/felixge/httpsnoop v1.0.4 // indirect
+require github.com/felixge/httpsnoop v1.1.0 // indirect

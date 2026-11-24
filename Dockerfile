@@ -1,23 +1,29 @@
 # syntax=docker/dockerfile:1
-FROM golang:1.19-buster as builder
 
-# Create and change to the app directory.
-WORKDIR /go/src/github.com/scosman/zipstreamer
+# Build on the native platform and cross-compile for the target platform,
+# so multi-arch images don't need emulation.
+FROM --platform=$BUILDPLATFORM golang:1.27-trixie AS builder
+ARG TARGETOS
+ARG TARGETARCH
+ARG VERSION=dev
+
+WORKDIR /src
 COPY . .
 
-# Build project
-RUN go build
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
+    go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/zipstreamer .
 
 # Use the official Debian slim image for a lean production container.
 # https://hub.docker.com/_/debian
 # https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
-FROM debian:buster-slim
-RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    ca-certificates && \
-    rm -rf /var/lib/apt/lists/*
+FROM debian:trixie-slim
+
+# CA certificates for fetching files over https, taken from the builder image
+# (avoids apt-get and keeps the image small).
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 # Copy the binary to the production image from the builder stage.
-COPY --from=builder /go/src/github.com/scosman/zipstreamer/zipstreamer /zipstreamer
+COPY --from=builder /out/zipstreamer /zipstreamer
 
 # Expose port - shouldn't override PORT env when using docker as server will bind to unexposed port. 
 # Instead map exposed port 4008 to desired port when running. 
