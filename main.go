@@ -12,6 +12,9 @@ import (
 	zip_streamer "github.com/scosman/zipstreamer/zip_streamer"
 )
 
+// version is set at build time via -ldflags "-X main.version=..."
+var version = "dev"
+
 func main() {
 	zipServer := zip_streamer.NewServer()
 	zipServer.Compression = (os.Getenv("ZS_COMPRESSION") == "DEFLATE")
@@ -30,7 +33,7 @@ func main() {
 
 	shutdownChannel := make(chan os.Signal, 10)
 	go func() {
-		log.Printf("Server starting on port %s", port)
+		log.Printf("ZipStreamer %s starting on port %s", version, port)
 		err := httpServer.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			log.Printf("Server Error: %s", err)
