@@ -13,6 +13,12 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH \
     go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/zipstreamer .
 
+# License notices that must accompany the binary
+RUN mkdir -p /out/doc/ca-certificates && \
+    .github/scripts/third-party-licenses.sh > /out/doc/THIRD_PARTY_LICENSES.md && \
+    cp LICENCE.md /out/doc/ && \
+    cp /usr/share/doc/ca-certificates/copyright /out/doc/ca-certificates/
+
 # Use the official Debian slim image for a lean production container.
 # https://hub.docker.com/_/debian
 # https://docs.docker.com/develop/develop-images/multistage-build/#use-multi-stage-builds
@@ -21,6 +27,9 @@ FROM debian:trixie-slim
 # CA certificates for fetching files over https, taken from the builder image
 # (avoids apt-get and keeps the image small).
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+# License notices (zipstreamer, Go, dependencies, CA certificates)
+COPY --from=builder /out/doc/ /usr/share/doc/zipstreamer/
 
 # Copy the binary to the production image from the builder stage.
 COPY --from=builder /out/zipstreamer /zipstreamer
